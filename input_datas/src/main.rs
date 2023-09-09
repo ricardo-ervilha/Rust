@@ -27,6 +27,6 @@ fn main() {
 
     let int_input : i64 = input.trim().parse().unwrap();
 
-    print!("{}", int_input + 5);
+    println!("{}", int_input + 5);
 
 }
