@@ -1,164 +1,182 @@
 use std::process;
-use std::collections::HashSet;
-// use std::io;
+use std::io;
 
 struct Node {
-    estado : Vec<i32>,
-    pai : &Node,
-    acao: i32
+    able_actions: Vec<i32>, // Ações disponíveis
+    already_attempt: i32,   // Última ação tentada
 }
 
-struct Fronteira{
-    fronteira : Vec<Node>
+struct Pilha {
+    pilha: Vec<Node>,
 }
 
-//Fronteira funciona como uma pilha
-impl Fronteira{
-    //Construtor, cria e retorna uma fronteira vazia.  
-    fn new() -> Self{
-        Fronteira { fronteira : Vec::new() }
+// Pilha de nós
+impl Pilha {
+    // Construtor, cria e retorna uma fronteira vazia.
+    fn new() -> Self {
+        Pilha { pilha: Vec::new() }
     }
 
-    //Adiciona elemento na fronteira.  
-    fn add(&mut self, node : Node) {
-        self.fronteira.push(node);
-    } 
+    // Adiciona elemento na fronteira.
+    fn add(&mut self, node: &'static mut Node) {
+        self.pilha.push(node);
+    }
 
-    //Verifica se um certo estado qualquer está na fronteira
-    fn contem(&self, state : Vec<i32>) -> bool{
+    // Verifica se a fronteira está vazia
+    fn vazia(&self) -> bool {
+        self.pilha.is_empty()
+    }
 
-        //Para cada estado da fronteira  
-        for val in &self.fronteira{
+    fn top(&mut self) -> Option<&mut Node> {
+        self.pilha.last_mut().map(|x| *x)
+    }
 
-            //Fico comparando cada elemento com o do que foi passado
-            for i in *(val).len(){
-                if *(val + i) != state[i]{
+    // Remove elemento da fronteira e retorna o valor
+    fn remove(&mut self) -> Option<&'static mut Node> {
+        if self.pilha.is_empty() {
+            println!("[ERRO] Removendo elemento com fronteira vazia!");
+            process::exit(1);
+        } else {
+            self.pilha.pop()
+        }
+    }
+}
+
+fn inicializa_matriz(matriz: &mut Vec<Vec<i32>>, n: usize) {
+    for i in 0..n {
+        matriz[i][0] = (i + 1) as i32;
+    }
+}
+
+fn imprime_matriz(matriz: &Vec<Vec<i32>>, n: usize) {
+    for i in 0..n {
+        for j in 0..n {
+            print!("{:3}", matriz[i][j]);
+        }
+        println!();
+    }
+}
+
+fn preenche_regras(matriz: &Vec<Vec<i32>>, n: i32, i: usize, j: usize) -> Vec<i32> {
+    // Para cada regra
+    let mut rules: Vec<i32> = Vec::new();
+    for r in 1..n + 1 {
+        let mut flag = true;
+
+        // Testar para coluna
+        for x in 0..i {
+            if matriz[x][j] == r {
+                flag = false;
+                break;
+            }
+        }
+
+        if flag {
+            // Testar para linha
+            for y in 0..j {
+                if matriz[i][y] == r {
+                    flag = false;
                     break;
                 }
             }
-
-            if(i == *(val).len()){
-                return true;
-            }
         }
 
-        return false;
-    }
-
-    //Verifica se a fronteira está vazia
-    fn vazia(&self) -> bool{
-        self.fronteira.is_empty()
-    }
-
-    //Remove elemento da fronteira e retorna o valor
-    fn remove(&mut self) -> Option<i32>{
-        if self.fronteira.is_empty() {
-            println!("[ERRO] Removendo elemento com fronteira vazia!");
-            process::exit(1);
-        }else{
-            self.fronteira.pop()
+        if flag {
+            rules.push(r);
         }
     }
+
+    return rules;
 }
 
-fn vizinhos(estado : Vec<i32>, n : i32){
-    let acoes : Vec<i32> = Vec<i32>::new();
+fn dfs(matriz: &mut Vec<Vec<i32>>, n: i32) {
+    let mut i: usize = 0;
+    let mut j: usize = 1;
+    let mut pilha = Pilha::new();
 
-    for i in 1..n+1{
-        let flag = true;
-        for j in 0..(estado.len()/n as i32){
-            if(i+1 == estado[j*n + (i-1)]){
-                flag = false;
-                break;
+    let mut cond = true;
+    loop {
+        if i < n as usize && j < n as usize {
+            let mut regras_disponiveis: Vec<i32>;
+
+            if cond {
+                regras_disponiveis = preenche_regras(&matriz, n, i, j);
+
+                // Estado de impasse
+                if regras_disponiveis.is_empty() {
+                    // Troco cond pra falso para não preencher regras novamente
+                    cond = false;
+                } else {
+                    // Salvo esse estado
+                    let regra = regras_disponiveis.pop();
+                    let no = Node {
+                        able_actions: regras_disponiveis.clone(), // Clone para evitar problemas de mutabilidade
+                        already_attempt: regra.unwrap(),
+                    };
+                    pilha.add(Box::leak(Box::new(no))); // Box::leak para armazenar uma referência estática
+                    matriz[i][j] = regra.unwrap();
+
+                    // Atualizo para ir aprofundando na árvore
+                    if i < n as usize {
+                        i += 1;
+                    } else {
+                        i = 0;
+                        j += 1;
+                    }
+                }
+            } else {
+                if !pilha.vazia() {
+                    // Clona o nó superior da pilha
+                    let mut top = pilha.top().unwrap().clone();
+
+                    // Atualiza o pai para tentar a próxima regra que ele permite
+                    let regra = top.able_actions.pop();
+                    top.already_attempt = regra.unwrap();
+                    matriz[i][j] = regra.unwrap();
+                    cond = true;
+
+                    if i < n as usize {
+                        i += 1;
+                    } else {
+                        i = 0;
+                        j += 1;
+                    }
+                } else {
+                    matriz[i][j] = 0;
+                    if !pilha.vazia() {
+                        pilha.remove();
+                        if i > 0 {
+                            i -= 1;
+                        } else {
+                            i = n as usize - 1;
+                            j -= 1;
+                        }
+                    } else {
+                        println!("Nenhuma solução encontrada.");
+                        process::exit(1);
+                    }
+                }
             }
-        }
-        for j in 1..(estado.len() % n as i32){
-            if(estado[0] == estado[j])
-            {
-                flag = false;
-                break;
-            }
-        }
-        if flag{
-            acoes.push(i);
-        }
-    } 
-
-    return acoes;
-}
-
-//Busca em profundidade
-fn dfs(let n : i32) -> bool{
-    let mut estados_explorados : i32 = 0;
-
-    let estadoInicial = Node {
-        estado = Vec<i32>::new(), //estado atual começa com vazio
-        pai = None, //Nenhum pai
-        acao = None //Nenhuma ação levou aquele cara ali
-    }
-
-    let mut fronteira = Fronteira::new();
-
-    fronteira.add(estadoInicial);
-
-    let mut estados_explorados = HashSet::new();
-
-    //Explorar até achar uma solução
-    while true{
-
-        if fronteira.vazia(){
-            println!("Nenhuma solução encontrada!");
-            process::exit(1);
-        }
-
-        //Escolhe o nó no topo da fronteira
-        let no = fronteira.remove();
-
-        estados_explorados += 1;
-
-        //Se cair aqui dentro, é porque achou uma solução
-        if no.estado.len() == n*n - n {
-            //Agora devemos caminhar para trás e achar qual foi a solução
-            return true;
-            // let regras_usadas : Vec<i32> = Vec::new();
-
-            // while no.parent is not None{
-            //     regras_usadas.push(no.regras);
-            //     no = no.pai;
-            // }
-
-            // regras_usadas.reverse();
-
-            // return regras_usadas;
-        }
-
-        //Marca aquele estado como explorado
-        estados_explorados.push(no.estado);
-
-        //Adiciona vizinhos na fronteira
-        for acao em vizinhos(no.estado, n){
-            if !fronteira.contem(no.estado.push(acao)) && !estados_explorados.contains(no.estado.push(acao)){
-                filho = Node{
-                    estado : no.estado.push(acao),
-                    pai : no
-                    acao: acao
-                };
-
-                fronteira.add(filho);
-            }
+        } else {
+            break;
         }
     }
 }
 
 fn main() {
-
     println!("*-*-* Quadrado Latino *-*-*");
     println!("Digite o valor de n: ");
     let mut input = String::new();
     io::stdin().read_line(&mut input).expect("Falha ao ler o valor de n!");
 
-    //Conversão para inteiro da string lida
-    let n : usize = input.trim().parse().unwrap();
-    
-    println!("{}", dfs(n));
+    // Conversão para inteiro da string lida
+    let n: i32 = input.trim().parse().unwrap();
+
+    // Criação da matriz dinâmica nxn preenchida com zeros
+    let mut matriz: Vec<Vec<i32>> = vec![vec![0; n as usize]; n as usize];
+
+    inicializa_matriz(&mut matriz, n as usize);
+
+    dfs(&mut matriz, n);
+    imprime_matriz(&matriz, n as usize);
 }
